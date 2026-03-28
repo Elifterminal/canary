@@ -52,6 +52,7 @@ export interface CanaryConfig {
 export interface CalibrationResult {
   model: string;
   echoFidelity: number;
+  adjustedEchoFidelity: number;
   toolCallRate: number;
   suitable: boolean;
   artifacts: string[];
@@ -173,6 +174,12 @@ export function normalize(text: string, artifacts?: string[]): string {
     for (const artifact of artifacts) {
       result = result.replaceAll(artifact, "");
     }
+    // Re-collapse whitespace and trim after artifact removal
+    result = result
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .join("\n")
+      .trim();
   }
 
   return result;
@@ -551,6 +558,12 @@ export class CanaryScanner {
     const artifacts: string[] = [];
     const details: string[] = [];
 
+    // Track prefix/suffix patterns the model adds to clean echoes
+    const prefixCounts = new Map<string, number>();
+    const suffixCounts = new Map<string, number>();
+    // Store raw pairs for adjusted fidelity calculation
+    const rawPairs: Array<{ input: string; output: string }> = [];
+
     for (let i = 0; i < testSamples.length; i++) {
       const sample = testSamples[i];
       // Rate limit: small delay between calibration requests
@@ -560,10 +573,36 @@ export class CanaryScanner {
 
         const normInput = normalize(sample);
         const normOutput = normalize(output);
+        rawPairs.push({ input: normInput, output: normOutput });
 
         if (normInput === normOutput) {
           echoMatches++;
         } else {
+          // Extract prefix: text before the input content starts
+          const inputIdx = normOutput.indexOf(normInput);
+          if (inputIdx > 0) {
+            const prefix = normOutput.slice(0, inputIdx).trim();
+            if (prefix.length > 0 && prefix.length < 50) {
+              prefixCounts.set(prefix, (prefixCounts.get(prefix) || 0) + 1);
+            }
+          }
+          // Extract suffix: text after the input content ends
+          if (inputIdx >= 0) {
+            const suffix = normOutput.slice(inputIdx + normInput.length).trim();
+            if (suffix.length > 0 && suffix.length < 50) {
+              suffixCounts.set(suffix, (suffixCounts.get(suffix) || 0) + 1);
+            }
+          }
+          // Check if model stripped a known label from the sample
+          if (inputIdx === -1) {
+            // Output doesn't contain input — check if output is a substring of input (model stripped something)
+            for (const label of ["Code:", "JSON-like:", "Email:", "Unicode:", "Bullet list:", "Numbers only:", "Tab", "UPPERCASE"]) {
+              if (normInput.includes(label) && !normOutput.includes(label)) {
+                prefixCounts.set(label, (prefixCounts.get(label) || 0) + 1);
+              }
+            }
+          }
+
           details.push(
             `Echo drift on: "${sample.slice(0, 30)}..." → "${output.slice(0, 30)}..."`
           );
@@ -580,14 +619,57 @@ export class CanaryScanner {
       }
     }
 
+    // Artifacts = prefixes/suffixes that appeared in 2+ samples (consistent model behavior, not injection)
+    const minOccurrences = Math.max(2, Math.floor(testSamples.length * 0.1));
+    for (const [prefix, count] of prefixCounts) {
+      if (count >= minOccurrences) {
+        artifacts.push(prefix);
+        details.push(`Artifact detected (prefix, ${count}x): "${prefix}"`);
+      }
+    }
+    for (const [suffix, count] of suffixCounts) {
+      if (count >= minOccurrences) {
+        artifacts.push(suffix);
+        details.push(`Artifact detected (suffix, ${count}x): "${suffix}"`);
+      }
+    }
+
+    // Recount echo fidelity WITH artifacts applied (no extra API calls)
+    let adjustedMatches = 0;
+    for (const { input, output } of rawPairs) {
+      let adjustedOutput = output;
+      for (const artifact of artifacts) {
+        adjustedOutput = adjustedOutput.replaceAll(artifact, "");
+      }
+      adjustedOutput = adjustedOutput.trim();
+      let adjustedInput = input;
+      for (const artifact of artifacts) {
+        adjustedInput = adjustedInput.replaceAll(artifact, "");
+      }
+      adjustedInput = adjustedInput.trim();
+      if (adjustedInput === adjustedOutput) {
+        adjustedMatches++;
+      }
+    }
+
     const echoFidelity = echoMatches / testSamples.length;
+    const adjustedEchoFidelity = rawPairs.length > 0
+      ? adjustedMatches / rawPairs.length
+      : echoFidelity;
     const toolCallRate = toolCallCount / testSamples.length;
+
+    if (artifacts.length > 0) {
+      details.push(
+        `Adjusted echo fidelity with artifacts: ${Math.round(adjustedEchoFidelity * 100)}% (raw: ${Math.round(echoFidelity * 100)}%)`
+      );
+    }
 
     return {
       model: this.model,
       echoFidelity: Math.round(echoFidelity * 100) / 100,
+      adjustedEchoFidelity: Math.round(adjustedEchoFidelity * 100) / 100,
       toolCallRate: Math.round(toolCallRate * 100) / 100,
-      suitable: echoFidelity >= 0.85 && toolCallRate <= 0.05,
+      suitable: adjustedEchoFidelity >= 0.85 && toolCallRate <= 0.05,
       artifacts,
       details,
     };

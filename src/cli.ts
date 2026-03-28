@@ -150,9 +150,20 @@ function printResult(result: ScanResult) {
 
 function printCalibration(result: CalibrationResult) {
   console.log(`  Model:           ${result.model}`);
-  console.log(`  Echo fidelity:   ${Math.round(result.echoFidelity * 100)}%`);
+  console.log(`  Echo fidelity:   ${Math.round(result.echoFidelity * 100)}% raw`);
+  if (result.artifacts.length > 0) {
+    console.log(`  Adjusted:        ${Math.round(result.adjustedEchoFidelity * 100)}% (with ${result.artifacts.length} artifact(s) filtered)`);
+  }
   console.log(`  Tool call rate:  ${Math.round(result.toolCallRate * 100)}%`);
   console.log(`  Suitable:        ${result.suitable ? "YES" : "NO"}`);
+
+  if (result.artifacts.length > 0) {
+    console.log(`\n  Artifacts found (model-specific noise to filter):`);
+    for (const artifact of result.artifacts) {
+      console.log(`    "${artifact}"`);
+    }
+    console.log(`\n  Pass these to CanaryConfig.calibrationArtifacts to reduce false positives.`);
+  }
 
   if (result.details.length > 0) {
     console.log(`\n  Details:`);
@@ -163,7 +174,7 @@ function printCalibration(result: CalibrationResult) {
 
   if (!result.suitable) {
     console.log("\n  This model may produce too many false positives.");
-    if (result.echoFidelity < 0.85) {
+    if (result.adjustedEchoFidelity < 0.85) {
       console.log("  Echo fidelity below 85% — model struggles with verbatim reproduction.");
     }
     if (result.toolCallRate > 0.05) {
