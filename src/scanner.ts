@@ -330,10 +330,18 @@ export class CanaryScanner {
           toolCalls: [],
         };
       }
-      // Retry on rate limit
-      if (error.status === 429 && retries > 0) {
-        await new Promise((r) => setTimeout(r, 10000));
-        return this.callCanary(input, retries - 1);
+      // Retry on rate limit (but not daily quota exhaustion)
+      if (error.status === 429) {
+        const msg = error.message || "";
+        if (msg.includes("per-day") || msg.includes("daily")) {
+          throw new Error(
+            "Daily free model quota exhausted. Add credits at openrouter.ai or wait for reset."
+          );
+        }
+        if (retries > 0) {
+          await new Promise((r) => setTimeout(r, 10000));
+          return this.callCanary(input, retries - 1);
+        }
       }
       throw error;
     }
