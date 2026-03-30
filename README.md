@@ -153,26 +153,43 @@ console.log(calibration.artifacts);            // pass these to calibrationArtif
 }
 ```
 
-## MCP Server
+## MCP Server (For AI Agents)
 
-Canary runs as an MCP server so AI agents can scan content before reading it.
+If you run an AI agent (Claude Code, Cursor, or any MCP-compatible tool), Canary can plug in as a tool the agent calls automatically. The agent gets scanning tools and uses them before reading untrusted content — no manual steps from you.
+
+### How it works
+
+1. You add Canary to your agent's MCP config (one-time setup)
+2. When the agent starts, it sees `canary_scan_url` and `canary_scan_text` as available tools
+3. Before reading an untrusted URL or processing unknown text, the agent calls the canary tool
+4. If the result is CLEAR, the agent proceeds. If FLAGGED, it warns you or skips the content
+5. Trust decisions are saved to `~/.canary/trust.json` automatically
+
+You don't need to run Canary separately. The agent starts it in the background as part of its tool setup.
+
+### Setup
+
+Add this to your agent's MCP config (e.g., `.claude/settings.json` for Claude Code, `claude_desktop_config.json` for Claude Desktop):
 
 ```json
 {
   "mcpServers": {
     "canary": {
       "command": "npx",
-      "args": ["tsx", "/path/to/canary/src/mcp-server.ts"],
-      "env": { "CANARY_API_KEY": "your-key" }
+      "args": ["canary-scan", "mcp"],
+      "env": { "CANARY_API_KEY": "your-openrouter-key" }
     }
   }
 }
 ```
 
-Tools provided:
-- `canary_scan_url` — Scan a URL before reading it
-- `canary_scan_text` — Scan raw text content
-- `canary_trust` — Manually mark sources as trusted/flagged
+Replace `your-openrouter-key` with your free API key from [OpenRouter](https://openrouter.ai/).
+
+### Tools the agent gets
+
+- `canary_scan_url` — Scan a URL before reading it. Returns CLEAR or FLAGGED.
+- `canary_scan_text` — Scan raw text content. Returns CLEAR or FLAGGED.
+- `canary_trust` — Manually mark sources as trusted or flagged. Persists to disk.
 
 ## Calibration
 
