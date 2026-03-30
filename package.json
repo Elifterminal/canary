@@ -1,6 +1,6 @@
 {
   "name": "canary-scan",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Prompt injection detection using behavioral analysis. Weak models as sensitive sensors.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

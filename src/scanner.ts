@@ -51,6 +51,8 @@ export interface CanaryConfig {
   calibrationArtifacts?: string[];
   /** Path to trust list JSON file. Default: ~/.canary/trust.json */
   trustFile?: string;
+  /** Callback for progress updates during long operations */
+  onProgress?: (message: string) => void;
 }
 
 export interface CalibrationResult {
@@ -256,6 +258,7 @@ export class CanaryScanner {
   private calibrationArtifacts: string[];
   private toolsSupported: boolean | null = null; // null = unknown, try first call
   private trustFile: string;
+  private onProgress: (message: string) => void;
 
   constructor(config: CanaryConfig) {
     this.client = new OpenAI({
@@ -268,6 +271,7 @@ export class CanaryScanner {
     this.chunkSize = config.chunkSize || DEFAULT_CHUNK_SIZE;
     this.overlapRatio = config.overlapRatio ?? DEFAULT_OVERLAP_RATIO;
     this.calibrationArtifacts = config.calibrationArtifacts || [];
+    this.onProgress = config.onProgress || (() => {});
     this.trustFile = config.trustFile || path.join(
       process.env.HOME || process.env.USERPROFILE || ".",
       ".canary",
@@ -449,7 +453,11 @@ export class CanaryScanner {
       const allReasons: string[] = [];
       let chunksFlagged = 0;
 
-      for (const chunk of chunks) {
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunk = chunks[ci];
+        if (chunks.length > 1) {
+          this.onProgress(`  Scanning chunk ${ci + 1}/${chunks.length}...`);
+        }
         const result = await this.scanChunk(chunk.text);
 
         if (result.deviationDetected) anyDeviation = true;
@@ -585,6 +593,7 @@ export class CanaryScanner {
 
     for (let i = 0; i < testSamples.length; i++) {
       const sample = testSamples[i];
+      this.onProgress(`  [${i + 1}/${testSamples.length}] Testing sample ${i + 1}...`);
       // Rate limit: small delay between calibration requests
       if (i > 0) await new Promise((r) => setTimeout(r, 12000));
       try {
