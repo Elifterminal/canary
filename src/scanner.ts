@@ -14,6 +14,8 @@
 
 import OpenAI from "openai";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +49,8 @@ export interface CanaryConfig {
   overlapRatio?: number;
   /** Model-specific normalization artifacts to ignore (populated by calibration) */
   calibrationArtifacts?: string[];
+  /** Path to trust list JSON file. Default: ~/.canary/trust.json */
+  trustFile?: string;
 }
 
 export interface CalibrationResult {
@@ -251,6 +255,7 @@ export class CanaryScanner {
   private overlapRatio: number;
   private calibrationArtifacts: string[];
   private toolsSupported: boolean | null = null; // null = unknown, try first call
+  private trustFile: string;
 
   constructor(config: CanaryConfig) {
     this.client = new OpenAI({
@@ -263,6 +268,12 @@ export class CanaryScanner {
     this.chunkSize = config.chunkSize || DEFAULT_CHUNK_SIZE;
     this.overlapRatio = config.overlapRatio ?? DEFAULT_OVERLAP_RATIO;
     this.calibrationArtifacts = config.calibrationArtifacts || [];
+    this.trustFile = config.trustFile || path.join(
+      process.env.HOME || process.env.USERPROFILE || ".",
+      ".canary",
+      "trust.json"
+    );
+    this.loadTrust();
   }
 
   /**
@@ -684,6 +695,45 @@ export class CanaryScanner {
   }
 
   /**
+   * Load trust list from disk
+   */
+  private loadTrust(): void {
+    try {
+      if (fs.existsSync(this.trustFile)) {
+        const data = JSON.parse(fs.readFileSync(this.trustFile, "utf-8"));
+        if (data.trusted) {
+          for (const source of data.trusted) {
+            this.setTrust(source, "clear", false);
+          }
+        }
+        if (data.flagged) {
+          for (const source of data.flagged) {
+            this.setTrust(source, "flagged", false);
+          }
+        }
+      }
+    } catch {
+      // No trust file or invalid JSON — start fresh
+    }
+  }
+
+  /**
+   * Save trust list to disk
+   */
+  private saveTrust(): void {
+    try {
+      const dir = path.dirname(this.trustFile);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const lists = this.getTrustList();
+      fs.writeFileSync(this.trustFile, JSON.stringify(lists, null, 2) + "\n");
+    } catch {
+      // Silently fail — trust persistence is best-effort
+    }
+  }
+
+  /**
    * Get trust list (cached clears and flags)
    */
   getTrustList(): { trusted: string[]; flagged: string[] } {
@@ -697,9 +747,9 @@ export class CanaryScanner {
   }
 
   /**
-   * Manually trust or flag a source
+   * Manually trust or flag a source. Persists to disk by default.
    */
-  setTrust(source: string, status: "clear" | "flagged"): void {
+  setTrust(source: string, status: "clear" | "flagged", persist: boolean = true): void {
     this.cache.set(source, {
       status,
       reason:
@@ -719,6 +769,9 @@ export class CanaryScanner {
         overlapRatio: 0,
       },
     });
+    if (persist) {
+      this.saveTrust();
+    }
   }
 
   private getCacheKey(content: string, source?: string): string {
