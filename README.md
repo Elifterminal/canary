@@ -69,6 +69,23 @@ canary trust add https://known-safe.com
 canary flag https://suspicious.com
 ```
 
+### Trust List (Persistent)
+
+Canary remembers which sources you've trusted or flagged, saved to `~/.canary/trust.json`. Decisions carry across sessions — trust a site once, it stays trusted.
+
+```json
+{
+  "trusted": ["https://known-safe.com"],
+  "flagged": ["https://suspicious.com"]
+}
+```
+
+- Trusted sources skip scanning and return CLEAR immediately
+- Flagged sources skip scanning and return FLAGGED immediately
+- Edit the file directly to add, remove, or reset entries
+- Delete the file to start fresh
+- Custom path: pass `trustFile` in `CanaryConfig`
+
 ### Example output
 
 ```
