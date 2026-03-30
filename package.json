@@ -1,11 +1,12 @@
 {
   "name": "canary-scan",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Prompt injection detection using behavioral analysis. Weak models as sensitive sensors.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "canary": "dist/cli.js"
+    "canary": "dist/cli.js",
+    "canary-scan": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,7 +14,14 @@
     "test": "tsx --test src/**/*.test.ts",
     "mcp": "tsx src/mcp-server.ts"
   },
-  "keywords": ["prompt-injection", "security", "llm", "canary", "mcp", "ai-safety"],
+  "keywords": [
+    "prompt-injection",
+    "security",
+    "llm",
+    "canary",
+    "mcp",
+    "ai-safety"
+  ],
   "author": "Elif",
   "license": "MIT",
   "dependencies": {
