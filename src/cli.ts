@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+process.removeAllListeners("warning");
 /**
  * Canary CLI — Scan URLs or text for prompt injection indicators
  *
@@ -68,7 +69,7 @@ async function main() {
     apiKey: API_KEY,
     baseUrl: BASE_URL,
     model: MODEL,
-    onProgress: (msg) => process.stdout.write(`\r${msg}`),
+    onProgress: (msg) => console.log(msg),
   });
 
   const command = args[0];
@@ -81,13 +82,13 @@ async function main() {
         process.exit(1);
       }
       const result = await scanner.scan(text);
-      process.stdout.write("\r" + " ".repeat(60) + "\r");
+  
       printResult(result);
     } else if (args[1]) {
       const url = args[1];
       console.log(`Scanning ${url}...`);
       const result = await scanner.scanUrl(url);
-      process.stdout.write("\r" + " ".repeat(60) + "\r");
+  
       printResult(result);
     } else {
       console.error("Error: provide a URL or --text");
@@ -98,7 +99,7 @@ async function main() {
     console.log("Running echo fidelity and tool call tests...");
     console.log("This takes 3-4 minutes (rate limit delays between samples).\n");
     const result = await scanner.calibrate();
-    process.stdout.write("\r" + " ".repeat(60) + "\r");
+
     printCalibration(result);
   } else if (command === "trust") {
     if (args[1] === "list") {
