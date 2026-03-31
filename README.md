@@ -47,7 +47,7 @@ export CANARY_API_KEY=your-openrouter-key
 Optional:
 
 ```bash
-export CANARY_MODEL=arcee-ai/trinity-mini:free  # default
+export CANARY_MODEL=stepfun/step-3.5-flash:free  # default
 export CANARY_BASE_URL=https://openrouter.ai/api/v1  # default
 ```
 
@@ -90,7 +90,7 @@ Canary remembers which sources you've trusted or flagged, saved to `~/.canary/tr
 
 ```
   Status:     FLAGGED
-  Model:      arcee-ai/trinity-mini:free
+  Model:      stepfun/step-3.5-flash:free
   Time:       2340ms
   Preview:    Ignore all previous instructions...
   Deviation:  YES
@@ -110,7 +110,7 @@ import { CanaryScanner } from "canary-scan";
 
 const scanner = new CanaryScanner({
   apiKey: process.env.CANARY_API_KEY!,
-  model: "arcee-ai/trinity-mini:free",  // optional
+  model: "stepfun/step-3.5-flash:free",  // optional
   chunkSize: 1500,                       // optional
   overlapRatio: 0.25,                    // optional
   calibrationArtifacts: [],              // optional, from calibration
@@ -190,6 +190,36 @@ Replace `your-openrouter-key` with your free API key from [OpenRouter](https://o
 - `canary_scan_url` — Scan a URL before reading it. Returns CLEAR or FLAGGED.
 - `canary_scan_text` — Scan raw text content. Returns CLEAR or FLAGGED.
 - `canary_trust` — Manually mark sources as trusted or flagged. Persists to disk.
+
+## Choosing a Canary Model
+
+The canary model is the tripwire — it needs to be **gullible enough** to get hijacked by injection, but **reliable enough** to echo clean text back faithfully. The wrong model gives you either false positives (too dumb) or missed detections (too smart).
+
+### Recommended (tested March 2026)
+
+| Model | Echo Fidelity | Tool Call Rate | Verdict |
+|-------|---------------|----------------|---------|
+| **stepfun/step-3.5-flash:free** | 95% | 0% | **Default. Best free option.** Only fails on unicode edge cases. |
+| arcee-ai/trinity-mini:free | 55% | 5% | Too noisy — almost half of clean inputs trigger false positives. |
+| liquid/lfm-2.5-1.2b-instruct:free | 30% | 0% | Too dumb — hallucinates on clean input, strips formatting. |
+
+### What to look for
+
+- **Echo fidelity above 85%** — The model echoes clean text back without adding commentary or reformatting.
+- **Tool call rate at 0%** — The model doesn't call honeypot tools on clean input.
+- **Small size (1B–20B)** — Large models (70B+) resist injection too well, making them poor detectors.
+
+### Models to avoid as canaries
+
+- **Frontier models** (GPT-4, Claude, Llama 70B+) — Too smart. They resist injection, which defeats the purpose.
+- **Base/unaligned models** — Too unpredictable. They hallucinate on clean input, creating constant false positives.
+- **Models without tool calling support** — Still work for text deviation detection, but miss the honeypot channel entirely.
+
+Run `canary calibrate` with any model to check. If fidelity is below 85% or tool call rate is above 5%, pick a different model.
+
+```bash
+CANARY_MODEL=your/model:free canary calibrate
+```
 
 ## Calibration
 

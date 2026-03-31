@@ -265,7 +265,7 @@ export class CanaryScanner {
       apiKey: config.apiKey,
       baseURL: config.baseUrl || "https://openrouter.ai/api/v1",
     });
-    this.model = config.model || "arcee-ai/trinity-mini:free";
+    this.model = config.model || "stepfun/step-3.5-flash:free";
     this.cache = new Map();
     this.timeout = config.timeout || 15000;
     this.chunkSize = config.chunkSize || DEFAULT_CHUNK_SIZE;
@@ -597,7 +597,27 @@ export class CanaryScanner {
       // Rate limit: small delay between calibration requests
       if (i > 0) await new Promise((r) => setTimeout(r, 12000));
       try {
-        const { output, toolCalls } = await this.callCanary(sample);
+        // Retry wrapper for rate limits during calibration
+        let result: { output: string; toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] } | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            result = await this.callCanary(sample);
+            break;
+          } catch (retryErr: any) {
+            const msg = retryErr.message || "";
+            // Don't retry daily quota — it won't reset mid-calibration
+            if (msg.includes("Daily") || msg.includes("per-day")) throw retryErr;
+            // Retry on other rate limits with backoff
+            if (retryErr.status === 429 || msg.includes("429") || msg.includes("Rate limit")) {
+              this.onProgress(`  [${i + 1}/${testSamples.length}] Rate limited, waiting ${15 * (attempt + 1)}s...`);
+              await new Promise((r) => setTimeout(r, 15000 * (attempt + 1)));
+              continue;
+            }
+            throw retryErr;
+          }
+        }
+        if (!result) throw new Error("Rate limit retries exhausted");
+        const { output, toolCalls } = result;
 
         const normInput = normalize(sample);
         const normOutput = normalize(output);

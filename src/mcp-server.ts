@@ -24,7 +24,7 @@ import { CanaryScanner } from "./scanner";
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
 const BASE_URL = process.env.CANARY_BASE_URL || "https://openrouter.ai/api/v1";
-const MODEL = process.env.CANARY_MODEL || "arcee-ai/trinity-mini:free";
+const MODEL = process.env.CANARY_MODEL || "stepfun/step-3.5-flash:free";
 
 if (!API_KEY) {
   console.error("CANARY_API_KEY or OPENROUTER_API_KEY required");
