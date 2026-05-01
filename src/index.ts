@@ -6,3 +6,9 @@ export {
   type CanaryConfig,
   type CalibrationResult,
 } from "./scanner";
+
+export {
+  isEnabled as telemetryEnabled,
+  setConsent as setTelemetryConsent,
+  recordScan,
+} from "./telemetry";

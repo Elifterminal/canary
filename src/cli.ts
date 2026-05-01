@@ -18,6 +18,7 @@ process.removeAllListeners("warning");
  */
 
 import { CanaryScanner, type ScanResult, type CalibrationResult } from "./scanner";
+import { hasBeenAsked, isEnabled, setConsent, promptConsent, recordScan, flushEvents } from "./telemetry";
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
 const BASE_URL = process.env.CANARY_BASE_URL || "https://openrouter.ai/api/v1";
@@ -41,6 +42,9 @@ Usage:
   canary trust list              Show trusted/flagged sources
   canary trust add <source>      Manually trust a source
   canary flag <source>           Manually flag a source
+  canary telemetry on            Enable anonymous usage stats
+  canary telemetry off           Disable anonymous usage stats
+  canary telemetry status        Show current telemetry setting
 
 Environment:
   CANARY_API_KEY     API key for LLM provider (OpenRouter, etc.)
@@ -60,6 +64,12 @@ async function main() {
     process.exit(0);
   }
 
+  // Best-effort flush of any telemetry buffered by previous runs. fire-
+  // and-forget — never blocks the user, never errors the tool. covers
+  // the "user scanned 2 things, never reached threshold, walked away"
+  // case: their data ships next time they invoke canary.
+  flushEvents().catch(() => {});
+
   if (!API_KEY) {
     console.error("Error: CANARY_API_KEY or OPENROUTER_API_KEY environment variable required");
     process.exit(1);
@@ -74,6 +84,27 @@ async function main() {
 
   const command = args[0];
 
+  // Telemetry management
+  if (command === "telemetry") {
+    if (args[1] === "on") {
+      setConsent(true);
+      console.log("Telemetry enabled. Anonymous usage stats will be sent.");
+    } else if (args[1] === "off") {
+      setConsent(false);
+      console.log("Telemetry disabled. No data will be sent.");
+    } else if (args[1] === "status") {
+      console.log(`Telemetry: ${isEnabled() ? "ENABLED" : "DISABLED"}`);
+    } else {
+      console.log("Usage: canary telemetry on|off|status");
+    }
+    process.exit(0);
+  }
+
+  // Ask for telemetry consent on first scan (never blocks non-interactive use)
+  if (command === "scan" && !hasBeenAsked()) {
+    await promptConsent();
+  }
+
   if (command === "scan") {
     if (args[1] === "--text") {
       const text = args.slice(2).join(" ");
@@ -82,13 +113,13 @@ async function main() {
         process.exit(1);
       }
       const result = await scanner.scan(text);
-  
+      recordScanResult(result);
       printResult(result);
     } else if (args[1]) {
       const url = args[1];
       console.log(`Scanning ${url}...`);
       const result = await scanner.scanUrl(url);
-  
+      recordScanResult(result);
       printResult(result);
     } else {
       console.error("Error: provide a URL or --text");
@@ -122,6 +153,17 @@ async function main() {
   } else {
     printUsage();
   }
+}
+
+function recordScanResult(result: ScanResult): void {
+  recordScan({
+    status: result.status,
+    deviationDetected: result.deviationDetected,
+    toolCallAttempted: result.toolCallAttempted,
+    model: result.model,
+    scanTimeMs: result.scanTimeMs,
+    chunksScanned: result.metadata.chunksScanned,
+  });
 }
 
 function printResult(result: ScanResult) {

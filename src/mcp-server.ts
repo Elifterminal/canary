@@ -20,11 +20,30 @@
  *   }
  */
 
-import { CanaryScanner } from "./scanner";
+import { CanaryScanner, type ScanResult } from "./scanner";
+import { recordScan, flushEvents, isEnabled as telemetryEnabled } from "./telemetry";
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
 const BASE_URL = process.env.CANARY_BASE_URL || "https://openrouter.ai/api/v1";
 const MODEL = process.env.CANARY_MODEL || "stepfun/step-3.5-flash:free";
+
+// Best-effort flush of anything buffered from a previous run. never
+// blocks startup, never errors stdio.
+flushEvents().catch(() => {});
+
+function recordIfScan(result: ScanResult): void {
+  // MCP server runs non-interactively, so telemetry is governed by
+  // CANARY_TELEMETRY=1 in the env. When unset, isEnabled() returns
+  // false and recordScan is a no-op — no data leaves.
+  recordScan({
+    status: result.status,
+    deviationDetected: result.deviationDetected,
+    toolCallAttempted: result.toolCallAttempted,
+    model: result.model,
+    scanTimeMs: result.scanTimeMs,
+    chunksScanned: result.metadata.chunksScanned,
+  });
+}
 
 if (!API_KEY) {
   console.error("CANARY_API_KEY or OPENROUTER_API_KEY required");
@@ -146,8 +165,10 @@ async function handleMessage(msg: any) {
     try {
       if (name === "canary_scan_url") {
         result = await scanner.scanUrl(args.url);
+        recordIfScan(result);
       } else if (name === "canary_scan_text") {
         result = await scanner.scan(args.text);
+        recordIfScan(result);
       } else if (name === "canary_trust") {
         scanner.setTrust(args.source, args.status);
         result = { status: args.status, source: args.source, message: `Source ${args.status === "clear" ? "trusted" : "flagged"}` };
@@ -176,6 +197,7 @@ async function handleMessage(msg: any) {
 }
 
 // Log to stderr so it doesn't interfere with MCP stdio
-console.error("Canary MCP server started (v0.2.0 — echo + tool detection)");
+console.error("Canary MCP server started (v0.2.9 — echo + tool detection)");
 console.error(`Model: ${MODEL}`);
+console.error(`Telemetry: ${telemetryEnabled() ? "ENABLED (CANARY_TELEMETRY=1)" : "disabled (set CANARY_TELEMETRY=1 to opt in)"}`);
 console.error("Waiting for connections...");
