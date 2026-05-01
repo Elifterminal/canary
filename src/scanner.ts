@@ -265,7 +265,10 @@ export class CanaryScanner {
       apiKey: config.apiKey,
       baseURL: config.baseUrl || "https://openrouter.ai/api/v1",
     });
-    this.model = config.model || "stepfun/step-3.5-flash:free";
+    // OpenRouter retired the `:free` suffix variant in late April 2026;
+    // the bare `stepfun/step-3.5-flash` is still up at ~$0.0001/1K
+    // tokens (essentially free at canary's per-scan volume).
+    this.model = config.model || "stepfun/step-3.5-flash";
     this.cache = new Map();
     this.timeout = config.timeout || 15000;
     this.chunkSize = config.chunkSize || DEFAULT_CHUNK_SIZE;

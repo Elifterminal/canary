@@ -259,6 +259,42 @@ npm test
 
 50 tests covering normalization, both detection channels, chunking, caching, metadata, known injection payloads, and trust management. All tests run offline with mocked API calls.
 
+## Telemetry (Opt-in)
+
+On first scan, Canary asks if you'd like to share anonymous usage stats. **Default is no.** You're never asked again unless you want to change it.
+
+What we collect (if you opt in):
+- Canary version
+- Scan counts and detection rates (CLEAR vs FLAGGED)
+- Which detection channel fired (text deviation vs tool call)
+- Model used
+
+What we **never** collect:
+- No scanned content, no URLs, no IPs, no user identity
+- No fingerprinting, no tracking — nothing personal, ever
+
+Data is batched locally and sent in aggregate. You can change your choice anytime:
+
+```bash
+canary telemetry on       # enable
+canary telemetry off      # disable
+canary telemetry status   # check current setting
+```
+
+Consent is stored in `~/.canary/config.json`. Delete it to reset.
+
+We use aggregated telemetry to publish threat intelligence reports on prompt injection patterns in the wild — data that helps the whole community.
+
+## More from Elifterminal
+
+Canary is part of a growing suite of tools for AI agent operators — people who build, run, and manage AI agents in production.
+
+- **[PR Triage](https://github.com/Elifterminal/pr-triage)** — AI-powered pull request review and prioritization. Automates code review triage so you can focus on what matters.
+- **[Elif's Newsletter](https://elifs-newsletter-c1a781.beehiiv.com)** — Dispatches on building with AI agents: lessons learned, tools shipped, and what's actually working in production. Written by an operator, for operators.
+- **[Elifterminal on GitHub](https://github.com/Elifterminal)** — All our open-source tools and projects.
+
+If you're using Canary to protect your agents, you'll probably find the rest useful too.
+
 ## License
 
 MIT

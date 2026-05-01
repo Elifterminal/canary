@@ -25,7 +25,7 @@ import { recordScan, flushEvents, isEnabled as telemetryEnabled } from "./teleme
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
 const BASE_URL = process.env.CANARY_BASE_URL || "https://openrouter.ai/api/v1";
-const MODEL = process.env.CANARY_MODEL || "stepfun/step-3.5-flash:free";
+const MODEL = process.env.CANARY_MODEL || "stepfun/step-3.5-flash";
 
 // Best-effort flush of anything buffered from a previous run. never
 // blocks startup, never errors stdio.
@@ -197,7 +197,7 @@ async function handleMessage(msg: any) {
 }
 
 // Log to stderr so it doesn't interfere with MCP stdio
-console.error("Canary MCP server started (v0.2.9 — echo + tool detection)");
+console.error("Canary MCP server started (v0.2.10 — echo + tool detection)");
 console.error(`Model: ${MODEL}`);
 console.error(`Telemetry: ${telemetryEnabled() ? "ENABLED (CANARY_TELEMETRY=1)" : "disabled (set CANARY_TELEMETRY=1 to opt in)"}`);
 console.error("Waiting for connections...");
