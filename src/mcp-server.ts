@@ -96,7 +96,9 @@ const TOOLS = [
   },
 ];
 
-// Simplified MCP stdio transport
+// MCP stdio transport: newline-delimited JSON, one message per line.
+// (Earlier versions used LSP-style Content-Length framing — wrong wire format,
+// the Claude Code MCP client never got a reply and timed out at 30s.)
 let buffer = "";
 
 process.stdin.setEncoding("utf-8");
@@ -107,36 +109,27 @@ process.stdin.on("data", (chunk: string) => {
 
 function processBuffer() {
   while (true) {
-    const headerEnd = buffer.indexOf("\r\n\r\n");
-    if (headerEnd === -1) break;
+    const newlineIdx = buffer.indexOf("\n");
+    if (newlineIdx === -1) break;
 
-    const header = buffer.slice(0, headerEnd);
-    const contentLengthMatch = header.match(/Content-Length: (\d+)/i);
-    if (!contentLengthMatch) {
-      buffer = buffer.slice(headerEnd + 4);
-      continue;
-    }
+    const line = buffer.slice(0, newlineIdx).trim();
+    buffer = buffer.slice(newlineIdx + 1);
 
-    const contentLength = parseInt(contentLengthMatch[1]);
-    const bodyStart = headerEnd + 4;
-    if (buffer.length < bodyStart + contentLength) break;
-
-    const body = buffer.slice(bodyStart, bodyStart + contentLength);
-    buffer = buffer.slice(bodyStart + contentLength);
+    if (!line) continue;
 
     try {
-      const msg = JSON.parse(body);
+      const msg = JSON.parse(line);
       handleMessage(msg);
     } catch {
-      // Skip malformed messages
+      // skip — partial / malformed lines shouldn't take the server down
     }
   }
 }
 
 function sendMessage(msg: any) {
-  const body = JSON.stringify(msg);
-  const header = `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n`;
-  process.stdout.write(header + body);
+  // single line, terminated by \n. JSON.stringify never produces literal newlines,
+  // so this stays single-frame even with multi-line text content inside the payload.
+  process.stdout.write(JSON.stringify(msg) + "\n");
 }
 
 async function handleMessage(msg: any) {
@@ -147,7 +140,7 @@ async function handleMessage(msg: any) {
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "canary", version: "0.2.0" },
+        serverInfo: { name: "canary", version: "0.2.11" },
       },
     });
   } else if (msg.method === "notifications/initialized") {
@@ -197,7 +190,7 @@ async function handleMessage(msg: any) {
 }
 
 // Log to stderr so it doesn't interfere with MCP stdio
-console.error("Canary MCP server started (v0.2.10 — echo + tool detection)");
+console.error("Canary MCP server started (v0.2.11 — echo + tool detection)");
 console.error(`Model: ${MODEL}`);
 console.error(`Telemetry: ${telemetryEnabled() ? "ENABLED (CANARY_TELEMETRY=1)" : "disabled (set CANARY_TELEMETRY=1 to opt in)"}`);
 console.error("Waiting for connections...");
