@@ -18,6 +18,21 @@ import fs from "fs";
 import path from "path";
 import { runHeuristics, summarizeHits } from "./heuristics";
 
+// ── Redaction ──────────────────────────────────────────────────────────────
+//
+// When a scan is FLAGGED, the matched / suspect text is NOT echoed back in
+// `contentPreview` or `reason`. Returning the literal payload would defeat
+// the purpose of the scan — the caller would receive the injection content
+// in their context anyway. For CLEAR scans we still include a short preview
+// so operators can spot-check false negatives.
+//
+// Redacted form: `[REDACTED N chars — flagged content not shown]`
+// where N is the original content length (in chars, pre-truncation).
+
+function redactedPreview(originalLength: number): string {
+  return `[REDACTED ${originalLength} chars — flagged content not shown]`;
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface ScanResult {
@@ -394,7 +409,11 @@ export class CanaryScanner {
     const deviationDetected = normalizedInput !== normalizedOutput;
 
     if (deviationDetected) {
-      // Find where they diverge for diagnostic purposes
+      // Find where they diverge for diagnostic purposes. We report only
+      // the position and divergence length — the literal diff bytes are
+      // not included because the model's output may be the attacker's
+      // payload reflected back at us, and embedding it in the reason
+      // string would leak it into the caller's context.
       const maxLen = Math.max(
         normalizedInput.length,
         normalizedOutput.length
@@ -406,12 +425,11 @@ export class CanaryScanner {
           break;
         }
       }
-      const context = normalizedOutput.slice(
-        Math.max(0, diffPos - 20),
-        diffPos + 40
+      const divergenceLen = Math.abs(
+        normalizedOutput.length - normalizedInput.length
       );
       reasons.push(
-        `Text deviation at position ${diffPos}: "...${context}..."`
+        `Text deviation at position ${diffPos} (divergence_len=${divergenceLen})`
       );
     }
 
@@ -446,6 +464,7 @@ export class CanaryScanner {
     const start = Date.now();
     const preview =
       content.slice(0, 100) + (content.length > 100 ? "..." : "");
+    const flaggedPreview = redactedPreview(content.length);
 
     // ── Layer 1: deterministic heuristic pre-screen ────────────────────
     // Cheap, regex-driven, runs before the non-deterministic LLM probe.
@@ -463,7 +482,7 @@ export class CanaryScanner {
           deviationDetected: false,
           toolCallAttempted: false,
           toolsInvoked: [],
-          contentPreview: preview,
+          contentPreview: flaggedPreview,
           model: `${this.model} (skipped — heuristic flagged)`,
           scanTimeMs: Date.now() - start,
           metadata: {
@@ -527,7 +546,7 @@ export class CanaryScanner {
         deviationDetected: anyDeviation,
         toolCallAttempted: anyToolCall,
         toolsInvoked: [...new Set(allToolsInvoked)],
-        contentPreview: preview,
+        contentPreview: flagged ? flaggedPreview : preview,
         model: this.model,
         scanTimeMs: Date.now() - start,
         metadata: {
@@ -549,7 +568,7 @@ export class CanaryScanner {
         deviationDetected: false,
         toolCallAttempted: false,
         toolsInvoked: [],
-        contentPreview: preview,
+        contentPreview: flaggedPreview,
         model: this.model,
         scanTimeMs: Date.now() - start,
         metadata: {

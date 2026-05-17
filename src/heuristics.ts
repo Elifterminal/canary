@@ -221,11 +221,20 @@ export function runHeuristics(content: string): HeuristicResult {
 /**
  * Pretty-print a HeuristicResult into a single 'reason' string suitable
  * for inclusion in a ScanResult.
+ *
+ * The matched text itself is NOT included — only rule id, description,
+ * position, and length. Embedding the literal payload here would leak
+ * the injection content back into the caller's context, defeating the
+ * point of the scan. The caller can still audit via the rule id + the
+ * scan source if they need to inspect the original content.
  */
 export function summarizeHits(result: HeuristicResult): string {
   if (result.hits.length === 0) return "no heuristic hits";
   return result.hits
-    .map((h) => `[${h.severity}:${h.id}] ${h.description} @${h.position}: "${h.match.replace(/\n/g, " ").slice(0, 80)}"`)
+    .map(
+      (h) =>
+        `[${h.severity}:${h.id}] ${h.description} @${h.position} (len=${h.match.length})`
+    )
     .join("; ");
 }
 

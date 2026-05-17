@@ -153,6 +153,16 @@ console.log(calibration.artifacts);            // pass these to calibrationArtif
 }
 ```
 
+#### Redaction on flag
+
+When `status === "flagged"`, `contentPreview` and `reason` are **redacted** to avoid leaking the injection payload into the caller's context:
+
+- `contentPreview` becomes `[REDACTED <N> chars — flagged content not shown]`
+- `reason` references rule id, severity, position offset, and match length — but **not** the literal matched substring
+- LLM-probe deviation reasons include `position` and `divergence_len` only — never the diverged bytes
+
+`status === "clear"` scans keep `contentPreview` intact (first ~100 chars) so operators can audit potential false negatives. To inspect the actual content of a flagged source, read it directly after acknowledging the flag — Canary's job is to surface the risk, not to ingest the payload for you.
+
 ## MCP Server (For AI Agents)
 
 If you run an AI agent (Claude Code, Cursor, or any MCP-compatible tool), Canary can plug in as a tool the agent calls automatically. The agent gets scanning tools and uses them before reading untrusted content — no manual steps from you.
