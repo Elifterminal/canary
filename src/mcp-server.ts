@@ -21,6 +21,7 @@
  */
 
 import { CanaryScanner, type ScanResult } from "./scanner";
+import { scanFile, supportedMimeTypes } from "./file_scan";
 import { recordScan, flushEvents, isEnabled as telemetryEnabled } from "./telemetry";
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
@@ -83,6 +84,21 @@ const TOOLS = [
     },
   },
   {
+    name: "canary_scan_file",
+    description:
+      "Scan a local file for prompt injection indicators before reading it. Reads the file server-side, detects MIME type, extracts text via the appropriate decoder, then runs the canary behavioral probe on the extracted text. The caller never sees the file's raw bytes. Returns CLEAR (no deviation under test conditions) or FLAGGED (deviation, unsupported MIME, file too large, or unreadable — fail-closed). Use this whenever you would otherwise Read an untrusted local file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the file to scan. Relative paths resolve from the canary MCP server's working dir; pass absolute for predictability." },
+        max_bytes: { type: "number", description: "Maximum bytes to read. Default 10 MB. Files larger than this fail-closed FLAGGED." },
+        max_text_chars: { type: "number", description: "Maximum extracted-text length sent to the probe. Default 1,000,000." },
+        force_mime: { type: "string", description: "Override MIME detection — use when the caller knows the format better than magic-byte heuristics." },
+      },
+      required: ["path"],
+    },
+  },
+  {
     name: "canary_trust",
     description: "Manually mark a source as trusted (clear) or flagged after human review.",
     inputSchema: {
@@ -93,6 +109,11 @@ const TOOLS = [
       },
       required: ["source", "status"],
     },
+  },
+  {
+    name: "canary_supported_mime_types",
+    description: "List the MIME types canary can currently scan via canary_scan_file. Anything else returns FLAGGED with reason='unsupported_mime'.",
+    inputSchema: { type: "object", properties: {} },
   },
 ];
 
@@ -140,7 +161,7 @@ async function handleMessage(msg: any) {
       result: {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "canary", version: "0.2.11" },
+        serverInfo: { name: "canary", version: "0.3.0" },
       },
     });
   } else if (msg.method === "notifications/initialized") {
@@ -157,14 +178,30 @@ async function handleMessage(msg: any) {
 
     try {
       if (name === "canary_scan_url") {
-        result = await scanner.scanUrl(args.url);
+        // file:// URLs are local files; delegate to scan_file so the
+        // caller doesn't have to know which transport canary uses.
+        if (typeof args.url === "string" && args.url.startsWith("file://")) {
+          const localPath = decodeURIComponent(args.url.replace(/^file:\/\//, ""));
+          result = await scanFile(scanner, localPath);
+        } else {
+          result = await scanner.scanUrl(args.url);
+        }
         recordIfScan(result);
       } else if (name === "canary_scan_text") {
         result = await scanner.scan(args.text);
         recordIfScan(result);
+      } else if (name === "canary_scan_file") {
+        result = await scanFile(scanner, args.path, {
+          maxBytes: typeof args.max_bytes === "number" ? args.max_bytes : undefined,
+          maxTextChars: typeof args.max_text_chars === "number" ? args.max_text_chars : undefined,
+          forceMime: typeof args.force_mime === "string" ? args.force_mime : undefined,
+        });
+        recordIfScan(result);
       } else if (name === "canary_trust") {
         scanner.setTrust(args.source, args.status);
         result = { status: args.status, source: args.source, message: `Source ${args.status === "clear" ? "trusted" : "flagged"}` };
+      } else if (name === "canary_supported_mime_types") {
+        result = { mime_types: supportedMimeTypes() };
       } else {
         throw new Error(`Unknown tool: ${name}`);
       }
@@ -190,7 +227,7 @@ async function handleMessage(msg: any) {
 }
 
 // Log to stderr so it doesn't interfere with MCP stdio
-console.error("Canary MCP server started (v0.2.11 — echo + tool detection)");
+console.error("Canary MCP server started (v0.3.0 — heuristic pre-screen + sentinel-bail probe + file scanner)");
 console.error(`Model: ${MODEL}`);
 console.error(`Telemetry: ${telemetryEnabled() ? "ENABLED (CANARY_TELEMETRY=1)" : "disabled (set CANARY_TELEMETRY=1 to opt in)"}`);
 console.error("Waiting for connections...");

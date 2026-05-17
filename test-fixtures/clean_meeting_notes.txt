@@ -1,0 +1,5 @@
+Tuesday standup
+- Aviary v1.5.3 audit shipped to Vanta
+- VocalEyes installer live for Flouk
+- F44 ship blocker filed
+Action: wait on Flouk authorization for v1.5.4

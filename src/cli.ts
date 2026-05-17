@@ -18,6 +18,7 @@ process.removeAllListeners("warning");
  */
 
 import { CanaryScanner, type ScanResult, type CalibrationResult } from "./scanner";
+import { scanFile, supportedMimeTypes } from "./file_scan";
 import { hasBeenAsked, isEnabled, setConsent, promptConsent, recordScan, flushEvents } from "./telemetry";
 
 const API_KEY = process.env.CANARY_API_KEY || process.env.OPENROUTER_API_KEY || "";
@@ -38,6 +39,9 @@ Canary — Prompt Injection Behavioral Detection
 Usage:
   canary scan <url>              Scan a URL
   canary scan --text "content"   Scan raw text
+  canary scan --file <path>      Scan a local file (MIME-detect + decode + probe)
+  canary scan-file <path>        Alias for "scan --file"
+  canary mime-types              List supported MIME types for scan-file
   canary calibrate               Test model echo fidelity and tool call rate
   canary trust list              Show trusted/flagged sources
   canary trust add <source>      Manually trust a source
@@ -115,6 +119,16 @@ async function main() {
       const result = await scanner.scan(text);
       recordScanResult(result);
       printResult(result);
+    } else if (args[1] === "--file") {
+      const filePath = args[2];
+      if (!filePath) {
+        console.error("Error: provide a file path");
+        process.exit(1);
+      }
+      console.log(`Scanning file ${filePath}...`);
+      const result = await scanFile(scanner, filePath);
+      recordScanResult(result);
+      printFileResult(result);
     } else if (args[1]) {
       const url = args[1];
       console.log(`Scanning ${url}...`);
@@ -122,9 +136,23 @@ async function main() {
       recordScanResult(result);
       printResult(result);
     } else {
-      console.error("Error: provide a URL or --text");
+      console.error("Error: provide a URL, --text, or --file");
       process.exit(1);
     }
+  } else if (command === "scan-file") {
+    const filePath = args[1];
+    if (!filePath) {
+      console.error("Error: provide a file path");
+      process.exit(1);
+    }
+    console.log(`Scanning file ${filePath}...`);
+    const result = await scanFile(scanner, filePath);
+    recordScanResult(result);
+    printFileResult(result);
+  } else if (command === "mime-types") {
+    const types = supportedMimeTypes();
+    console.log(`Canary can currently scan ${types.length} MIME types:`);
+    for (const t of types) console.log(`  ${t}`);
   } else if (command === "calibrate") {
     console.log(`Calibrating model: ${MODEL}`);
     console.log("Running echo fidelity and tool call tests...");
@@ -153,6 +181,14 @@ async function main() {
   } else {
     printUsage();
   }
+}
+
+function printFileResult(result: ScanResult & { mime?: string; truncated?: boolean; decoder?: string }) {
+  printResult(result);
+  if (result.mime) console.log(`  MIME:       ${result.mime}`);
+  if (result.decoder) console.log(`  Decoder:    ${result.decoder}`);
+  if (result.truncated) console.log(`  Truncated:  YES (extracted text exceeded max chars)`);
+  console.log();
 }
 
 function recordScanResult(result: ScanResult): void {
